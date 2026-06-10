@@ -1,0 +1,55 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --negro: #111111;
+  --lima: #CCFF00;
+  --gris-oscuro: #374151;
+  --gris-claro: #F3F4F6;
+  --blanco: #FFFFFF;
+  --font-titulos: 'Montserrat', sans-serif;
+  --font-cuerpo: 'Open Sans', sans-serif;
+}
+
+body {
+  font-family: var(--font-cuerpo);
+  background-color: var(--negro);
+  color: var(--blanco);
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-titulos);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+button {
+  font-family: var(--font-cuerpo);
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+
+button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+input, select {
+  font-family: var(--font-cuerpo);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--negro);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--gris-oscuro);
+  border-radius: 3px;
+}
