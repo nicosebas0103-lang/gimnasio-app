@@ -43,13 +43,14 @@ input, select {
   font-family: var(--font-cuerpo);
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--negro);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--gris-oscuro);
-  border-radius: 3px;
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--negro); }
+::-webkit-scrollbar-thumb { background: var(--gris-oscuro); border-radius: 3px; }
+
+.desktop-nav { display: flex; }
+.mobile-nav { display: none; }
+
+@media (max-width: 639px) {
+  .desktop-nav { display: none !important; }
+  .mobile-nav { display: block !important; }
 }
