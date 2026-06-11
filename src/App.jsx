@@ -5,6 +5,7 @@ import Clases from './pages/Clases'
 import MisReservas from './pages/MisReservas'
 import Admin from './pages/Admin'
 import Pagos from './pages/Pagos'
+import Asistencia from './pages/Asistencia'
 
 const ADMIN_EMAIL = 'sebasfx010307@gmail.com'
 
@@ -36,8 +37,20 @@ export default function App() {
     { tab: 'clases', label: '🏃 Clases' },
     { tab: 'reservas', label: '📋 Reservas' },
     { tab: 'pagos', label: '💳 Pagos' },
+    { tab: 'asistencia', label: '✅ Asistencia' },
     ...(esAdmin ? [{ tab: 'admin', label: '⚙️ Admin' }] : [])
   ]
+
+  const btnStyle = (tab) => ({
+    padding: '10px 18px', borderRadius: '10px',
+    border: pagina === tab ? 'none' : '1px solid #374151',
+    cursor: 'pointer',
+    fontFamily: 'var(--font-titulos)', fontWeight: 700,
+    fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px',
+    background: pagina === tab ? '#CCFF00' : 'transparent',
+    color: pagina === tab ? '#111111' : '#9ca3af',
+    transition: 'all 0.2s'
+  })
 
   return (
     <div style={{ fontFamily: 'var(--font-cuerpo)' }}>
@@ -52,9 +65,7 @@ export default function App() {
         <div style={{
           maxWidth: '1100px', margin: '0 auto',
           padding: '14px 20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
 
           {/* Logo */}
@@ -73,18 +84,11 @@ export default function App() {
           </div>
 
           {/* Botones desktop */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}
-            className="desktop-nav">
+          <div className="desktop-nav" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {items.map(item => (
-              <button key={item.tab} onClick={() => navegar(item.tab)} style={{
-                padding: '10px 18px', borderRadius: '10px',
-                border: pagina === item.tab ? 'none' : '1px solid #374151',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-titulos)', fontWeight: 700,
-                fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px',
-                background: pagina === item.tab ? '#CCFF00' : 'transparent',
-                color: pagina === item.tab ? '#111111' : '#9ca3af'
-              }}>{item.label}</button>
+              <button key={item.tab} onClick={() => navegar(item.tab)} style={btnStyle(item.tab)}>
+                {item.label}
+              </button>
             ))}
             <button onClick={handleLogout} style={{
               padding: '10px 18px', borderRadius: '10px',
@@ -119,20 +123,18 @@ export default function App() {
               <button key={item.tab} onClick={() => navegar(item.tab)} style={{
                 display: 'block', width: '100%',
                 padding: '14px 16px', marginBottom: '8px',
-                borderRadius: '10px',
-                border: pagina === item.tab ? 'none' : '1px solid #374151',
-                cursor: 'pointer', textAlign: 'left',
+                borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
                 fontFamily: 'var(--font-titulos)', fontWeight: 700,
                 fontSize: '13px', textTransform: 'uppercase', letterSpacing: '1px',
                 background: pagina === item.tab ? '#CCFF00' : 'transparent',
-                color: pagina === item.tab ? '#111111' : '#9ca3af'
+                color: pagina === item.tab ? '#111111' : '#9ca3af',
+                border: pagina === item.tab ? 'none' : '1px solid #374151'
               }}>{item.label}</button>
             ))}
             <button onClick={handleLogout} style={{
               display: 'block', width: '100%',
-              padding: '14px 16px',
-              borderRadius: '10px', border: '1px solid #374151',
-              cursor: 'pointer', textAlign: 'left',
+              padding: '14px 16px', borderRadius: '10px',
+              border: '1px solid #374151', cursor: 'pointer', textAlign: 'left',
               fontFamily: 'var(--font-titulos)', fontWeight: 700,
               fontSize: '13px', textTransform: 'uppercase', letterSpacing: '1px',
               background: 'transparent', color: '#f87171'
@@ -145,6 +147,7 @@ export default function App() {
       {pagina === 'clases' && <Clases />}
       {pagina === 'reservas' && <MisReservas />}
       {pagina === 'pagos' && <Pagos />}
+      {pagina === 'asistencia' && <Asistencia />}
       {pagina === 'admin' && <Admin />}
     </div>
   )
