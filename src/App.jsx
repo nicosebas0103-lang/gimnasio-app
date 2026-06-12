@@ -6,6 +6,8 @@ import MisReservas from './pages/MisReservas'
 import Admin from './pages/Admin'
 import Pagos from './pages/Pagos'
 import Asistencia from './pages/Asistencia'
+import ProfesorView from './pages/ProfesorView'
+import NavbarProfesor from './pages/NavbarProfesor'
 
 const ADMIN_EMAIL = 'sebasfx010307@gmail.com'
 
@@ -13,15 +15,41 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [pagina, setPagina] = useState('clases')
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [rol, setRol] = useState(null) // 'admin', 'profesor', 'usuario'
+  const [cargandoRol, setCargandoRol] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-    supabase.auth.onAuthStateChange((_event, session) => setSession(session))
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      if (session) verificarRol(session.user.email)
+    })
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session) verificarRol(session.user.email)
+      else { setRol(null); setCargandoRol(false) }
+    })
   }, [])
+
+  async function verificarRol(email) {
+    setCargandoRol(true)
+    if (email === ADMIN_EMAIL) {
+      setRol('admin')
+      setCargandoRol(false)
+      return
+    }
+    const { data } = await supabase
+      .from('profesores')
+      .select('email')
+      .eq('email', email)
+      .single()
+    setRol(data ? 'profesor' : 'usuario')
+    setCargandoRol(false)
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
     setSession(null)
+    setRol(null)
   }
 
   function navegar(tab) {
@@ -29,16 +57,51 @@ export default function App() {
     setMenuAbierto(false)
   }
 
-  if (!session) return <Login onLogin={() => supabase.auth.getSession().then(({ data: { session } }) => setSession(session))} />
+  if (!session) return (
+    <Login onLogin={() =>
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setSession(session)
+        if (session) verificarRol(session.user.email)
+      })
+    } />
+  )
 
-  const esAdmin = session.user.email === ADMIN_EMAIL
+  // Pantalla de carga mientras verifica el rol
+  if (cargandoRol) return (
+    <div style={{
+      minHeight: '100vh', background: '#111111',
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          background: '#CCFF00', borderRadius: '50%',
+          width: '60px', height: '60px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '28px', margin: '0 auto 16px'
+        }}>🏋️</div>
+        <p style={{
+          color: '#9ca3af', fontFamily: 'var(--font-titulos)',
+          fontSize: '13px', textTransform: 'uppercase', letterSpacing: '2px'
+        }}>Cargando...</p>
+      </div>
+    </div>
+  )
 
+  // Vista de PROFESOR
+  if (rol === 'profesor') return (
+    <>
+      <NavbarProfesor handleLogout={handleLogout} />
+      <ProfesorView session={session} />
+    </>
+  )
+
+  // Items de navegación para admin y usuario normal
   const items = [
     { tab: 'clases', label: '🏃 Clases' },
     { tab: 'reservas', label: '📋 Reservas' },
     { tab: 'pagos', label: '💳 Pagos' },
     { tab: 'asistencia', label: '✅ Asistencia' },
-    ...(esAdmin ? [{ tab: 'admin', label: '⚙️ Admin' }] : [])
+    ...(rol === 'admin' ? [{ tab: 'admin', label: '⚙️ Admin' }] : [])
   ]
 
   const btnStyle = (tab) => ({
@@ -112,7 +175,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* Menú móvil desplegable */}
+        {/* Menú móvil */}
         {menuAbierto && (
           <div className="mobile-nav" style={{
             background: '#1a1a1a',

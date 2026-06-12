@@ -8,12 +8,17 @@ export default function Admin() {
   const [clases, setClases] = useState([])
   const [pagos, setPagos] = useState([])
   const [reservas, setReservas] = useState([])
+  const [profesores, setProfesores] = useState([])
+  const [registrosProfesores, setRegistrosProfesores] = useState([])
   const [mensaje, setMensaje] = useState('')
+  const [mensajeProfesor, setMensajeProfesor] = useState('')
   const [seccion, setSeccion] = useState('dashboard')
   const [form, setForm] = useState({ nombre: '', instructor: '', fecha_hora: '', capacidad_max: '' })
+  const [formProfesor, setFormProfesor] = useState({ email: '', nombre: '' })
   const [scanResultado, setScanResultado] = useState('')
   const [scanError, setScanError] = useState('')
   const [escaneando, setEscaneando] = useState(false)
+  const [scanMode, setScanMode] = useState('asistencia') // 'asistencia' o 'profesor'
   const [claseDetalle, setClaseDetalle] = useState(null)
   const [usuariosClase, setUsuariosClase] = useState([])
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false)
@@ -23,6 +28,8 @@ export default function Admin() {
     cargarClases()
     cargarPagos()
     cargarReservas()
+    cargarProfesores()
+    cargarRegistrosProfesores()
   }, [])
 
   useEffect(() => {
@@ -49,6 +56,19 @@ export default function Admin() {
     setReservas(data || [])
   }
 
+  async function cargarProfesores() {
+    const { data } = await supabase.from('profesores').select('*').order('created_at', { ascending: false })
+    setProfesores(data || [])
+  }
+
+  async function cargarRegistrosProfesores() {
+    const { data } = await supabase
+      .from('registros_profesores')
+      .select('*')
+      .order('fecha', { ascending: false })
+    setRegistrosProfesores(data || [])
+  }
+
   async function crearClase() {
     if (!form.nombre || !form.instructor || !form.fecha_hora || !form.capacidad_max) {
       setMensaje('⚠️ Completa todos los campos')
@@ -71,6 +91,30 @@ export default function Admin() {
     const { error } = await supabase.from('clases').delete().eq('id', id)
     if (error) setMensaje('❌ Error al eliminar')
     else { setMensaje('✅ Clase eliminada'); cargarClases() }
+  }
+
+  async function agregarProfesor() {
+    if (!formProfesor.email || !formProfesor.nombre) {
+      setMensajeProfesor('⚠️ Completa email y nombre')
+      return
+    }
+    const { error } = await supabase.from('profesores').insert({
+      email: formProfesor.email.toLowerCase().trim(),
+      nombre: formProfesor.nombre.trim()
+    })
+    if (error) setMensajeProfesor('❌ Error — ese correo ya existe o hubo un problema')
+    else {
+      setMensajeProfesor('✅ Profesor agregado')
+      setFormProfesor({ email: '', nombre: '' })
+      cargarProfesores()
+    }
+  }
+
+  async function eliminarProfesor(id) {
+    if (!window.confirm('¿Quitar acceso a este profesor?')) return
+    const { error } = await supabase.from('profesores').delete().eq('id', id)
+    if (error) setMensajeProfesor('❌ Error al eliminar')
+    else { setMensajeProfesor('✅ Acceso revocado'); cargarProfesores() }
   }
 
   async function verUsuariosClase(clase) {
@@ -101,7 +145,39 @@ export default function Admin() {
           try {
             const datos = JSON.parse(decodedText)
 
-            // Verificar si ya asistió hoy
+            // QR de profesor
+            if (datos.tipo === 'profesor') {
+              // Determinar si es entrada o salida
+              const hoy = new Date()
+              const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString()
+              const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1).toISOString()
+
+              const { data: registrosHoy } = await supabase
+                .from('registros_profesores')
+                .select('*')
+                .eq('profesor_email', datos.email)
+                .gte('fecha', inicioDia)
+                .lt('fecha', finDia)
+                .order('fecha', { ascending: false })
+
+              // Si no hay registros hoy o el último fue salida → entrada
+              // Si el último fue entrada → salida
+              const ultimoRegistro = registrosHoy?.[0]
+              const tipo = !ultimoRegistro || ultimoRegistro.tipo === 'salida' ? 'entrada' : 'salida'
+
+              const { error } = await supabase.from('registros_profesores').insert({
+                profesor_email: datos.email,
+                tipo
+              })
+              if (error) setScanError('❌ Error al registrar')
+              else {
+                setScanResultado(`✅ ${tipo.toUpperCase()} registrada para ${datos.email}`)
+                cargarRegistrosProfesores()
+              }
+              return
+            }
+
+            // QR de usuario normal — asistencia
             const hoy = new Date()
             const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString()
             const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1).toISOString()
@@ -124,6 +200,7 @@ export default function Admin() {
             })
             if (error) setScanError('❌ Error al registrar asistencia')
             else setScanResultado(`✅ Asistencia registrada para ${datos.email}`)
+
           } catch {
             setScanError('❌ QR inválido')
           }
@@ -195,6 +272,19 @@ export default function Admin() {
     pendientes: mesesTranscurridos.filter(m => !mesesPagados.includes(m))
   }))
 
+  // Agrupar registros de profesores por email para el dashboard
+  const resumenProfesores = {}
+  registrosProfesores.forEach(r => {
+    if (!resumenProfesores[r.profesor_email]) {
+      resumenProfesores[r.profesor_email] = { entradas: 0, salidas: 0, ultimo: null }
+    }
+    if (r.tipo === 'entrada') resumenProfesores[r.profesor_email].entradas++
+    else resumenProfesores[r.profesor_email].salidas++
+    if (!resumenProfesores[r.profesor_email].ultimo) {
+      resumenProfesores[r.profesor_email].ultimo = r
+    }
+  })
+
   const inputStyle = {
     width: '100%', padding: '13px 16px', marginBottom: '12px',
     background: '#111111', border: '1.5px solid #374151',
@@ -219,13 +309,14 @@ export default function Admin() {
           <h2 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '32px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>
             Panel <span style={{ color: '#CCFF00' }}>Admin</span>
           </h2>
-          <p style={{ color: '#9ca3af', fontSize: '14px' }}>Gestiona clases, pagos y estadísticas</p>
+          <p style={{ color: '#9ca3af', fontSize: '14px' }}>Gestiona clases, pagos, entrenadores y estadísticas</p>
         </div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', flexWrap: 'wrap' }}>
           <button onClick={() => { setSeccion('dashboard'); detenerScanner() }} style={tabStyle('dashboard')}>📊 Dashboard</button>
           <button onClick={() => { setSeccion('clases'); detenerScanner() }} style={tabStyle('clases')}>🏃 Clases</button>
+          <button onClick={() => { setSeccion('entrenadores'); detenerScanner() }} style={tabStyle('entrenadores')}>👤 Entrenadores</button>
           <button onClick={() => { setSeccion('pagos'); detenerScanner() }} style={tabStyle('pagos')}>💳 Pagos</button>
           <button onClick={() => { setSeccion('deudores'); detenerScanner() }} style={tabStyle('deudores')}>⚠️ Quiénes deben</button>
           <button onClick={() => { setSeccion('scanner'); setScanResultado(''); setScanError('') }} style={tabStyle('scanner')}>📷 Escanear QR</button>
@@ -240,6 +331,7 @@ export default function Admin() {
                 { label: 'Reservas totales', valor: totalReservas },
                 { label: 'Clases activas', valor: totalClases },
                 { label: 'Usuarios activos', valor: totalUsuarios },
+                { label: 'Entrenadores', valor: profesores.length },
               ].map((m, i) => (
                 <div key={i} style={{ background: '#1a1a1a', borderRadius: '16px', padding: '20px', border: '1px solid #374151', textAlign: 'center' }}>
                   <p style={{ margin: '0 0 8px', color: '#9ca3af', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontFamily: 'var(--font-titulos)' }}>{m.label}</p>
@@ -302,6 +394,93 @@ export default function Admin() {
           </>
         )}
 
+        {/* ENTRENADORES */}
+        {seccion === 'entrenadores' && (
+          <>
+            {/* Agregar profesor */}
+            <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '30px', marginBottom: '20px', border: '1px solid #374151' }}>
+              <h3 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '16px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px' }}>➕ Agregar entrenador</h3>
+              <input placeholder="Nombre del entrenador" value={formProfesor.nombre} onChange={e => setFormProfesor({ ...formProfesor, nombre: e.target.value })} style={inputStyle} />
+              <input placeholder="Correo electrónico" value={formProfesor.email} onChange={e => setFormProfesor({ ...formProfesor, email: e.target.value })} style={inputStyle} />
+              <button onClick={agregarProfesor} style={{ width: '100%', padding: '14px', background: '#CCFF00', color: '#111111', border: 'none', borderRadius: '10px', fontFamily: 'var(--font-titulos)', fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                Dar acceso
+              </button>
+              {mensajeProfesor && (
+                <p style={{ marginTop: '16px', padding: '12px', borderRadius: '8px', background: mensajeProfesor.includes('✅') ? 'rgba(204,255,0,0.1)' : 'rgba(255,100,100,0.1)', border: `1px solid ${mensajeProfesor.includes('✅') ? '#CCFF00' : '#f87171'}`, color: mensajeProfesor.includes('✅') ? '#CCFF00' : '#f87171', textAlign: 'center', fontSize: '13px', fontWeight: 600 }}>{mensajeProfesor}</p>
+              )}
+            </div>
+
+            {/* Lista de profesores */}
+            <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '30px', marginBottom: '20px', border: '1px solid #374151' }}>
+              <h3 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '16px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px' }}>👤 Entrenadores registrados</h3>
+              {profesores.length === 0 && <p style={{ color: '#9ca3af', fontSize: '14px' }}>No hay entrenadores registrados.</p>}
+              {profesores.map(prof => (
+                <div key={prof.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', marginBottom: '10px', background: '#111111', borderRadius: '12px', border: '1px solid #374151', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ background: '#CCFF00', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '16px', color: '#111111' }}>
+                      {prof.nombre.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p style={{ margin: '0 0 3px', fontWeight: 700, color: '#FFFFFF', fontSize: '14px' }}>{prof.nombre}</p>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#9ca3af' }}>{prof.email}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => eliminarProfesor(prof.id)} style={{ padding: '8px 16px', background: 'transparent', color: '#f87171', border: '1.5px solid #f87171', borderRadius: '8px', fontFamily: 'var(--font-titulos)', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', cursor: 'pointer' }}>
+                    Revocar acceso
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Dashboard entradas/salidas */}
+            <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '30px', border: '1px solid #374151' }}>
+              <h3 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '16px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px' }}>🕐 Registros de entrada/salida</h3>
+              {registrosProfesores.length === 0 && <p style={{ color: '#9ca3af', fontSize: '14px' }}>No hay registros aún.</p>}
+
+              {/* Resumen por profesor */}
+              {Object.entries(resumenProfesores).map(([email, datos]) => (
+                <div key={email} style={{ padding: '16px', marginBottom: '12px', background: '#111111', borderRadius: '12px', border: '1px solid #374151' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <p style={{ margin: 0, fontWeight: 700, color: '#FFFFFF', fontSize: '14px' }}>👤 {email}</p>
+                    {datos.ultimo && (
+                      <span style={{ background: datos.ultimo.tipo === 'entrada' ? 'rgba(204,255,0,0.1)' : 'rgba(248,113,113,0.1)', color: datos.ultimo.tipo === 'entrada' ? '#CCFF00' : '#f87171', padding: '3px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-titulos)', textTransform: 'uppercase' }}>
+                        Último: {datos.ultimo.tipo} · {new Date(datos.ultimo.fecha).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ background: 'rgba(204,255,0,0.08)', borderRadius: '10px', padding: '10px 16px', flex: 1, textAlign: 'center', border: '1px solid rgba(204,255,0,0.2)' }}>
+                      <p style={{ margin: '0 0 4px', color: '#9ca3af', fontSize: '11px', textTransform: 'uppercase', fontFamily: 'var(--font-titulos)' }}>Entradas</p>
+                      <p style={{ margin: 0, color: '#CCFF00', fontWeight: 900, fontSize: '22px', fontFamily: 'var(--font-titulos)' }}>{datos.entradas}</p>
+                    </div>
+                    <div style={{ background: 'rgba(248,113,113,0.08)', borderRadius: '10px', padding: '10px 16px', flex: 1, textAlign: 'center', border: '1px solid rgba(248,113,113,0.2)' }}>
+                      <p style={{ margin: '0 0 4px', color: '#9ca3af', fontSize: '11px', textTransform: 'uppercase', fontFamily: 'var(--font-titulos)' }}>Salidas</p>
+                      <p style={{ margin: 0, color: '#f87171', fontWeight: 900, fontSize: '22px', fontFamily: 'var(--font-titulos)' }}>{datos.salidas}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Historial reciente */}
+              <h4 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '13px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', margin: '24px 0 12px' }}>Historial reciente</h4>
+              {registrosProfesores.slice(0, 15).map(r => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: '#111111', borderRadius: '10px', marginBottom: '6px', border: '1px solid #374151' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '16px' }}>{r.tipo === 'entrada' ? '🟢' : '🔴'}</span>
+                    <div>
+                      <p style={{ margin: '0 0 2px', color: '#FFFFFF', fontSize: '13px', fontWeight: 600 }}>{r.profesor_email}</p>
+                      <p style={{ margin: 0, color: '#9ca3af', fontSize: '11px' }}>{new Date(r.fecha).toLocaleString('es-EC')}</p>
+                    </div>
+                  </div>
+                  <span style={{ background: r.tipo === 'entrada' ? 'rgba(204,255,0,0.1)' : 'rgba(248,113,113,0.1)', color: r.tipo === 'entrada' ? '#CCFF00' : '#f87171', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-titulos)', textTransform: 'uppercase' }}>
+                    {r.tipo}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         {/* CLASES */}
         {seccion === 'clases' && (
           <>
@@ -325,9 +504,7 @@ export default function Admin() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                     <div>
                       <p style={{ margin: '0 0 4px', fontWeight: 700, color: '#FFFFFF', fontSize: '14px', fontFamily: 'var(--font-titulos)', textTransform: 'uppercase' }}>{clase.nombre}</p>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#9ca3af' }}>
-                        👤 {clase.instructor} · 🕐 {new Date(clase.fecha_hora).toLocaleString('es-EC')} · 👥 {clase.capacidad_max} cupos
-                      </p>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#9ca3af' }}>👤 {clase.instructor} · 🕐 {new Date(clase.fecha_hora).toLocaleString('es-EC')} · 👥 {clase.capacidad_max} cupos</p>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => verUsuariosClase(clase)} style={{ padding: '8px 16px', background: 'rgba(204,255,0,0.1)', color: '#CCFF00', border: '1.5px solid #CCFF00', borderRadius: '8px', fontFamily: 'var(--font-titulos)', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', cursor: 'pointer' }}>👥 Ver usuarios</button>
@@ -349,7 +526,6 @@ export default function Admin() {
                     </div>
                     <button onClick={() => { setClaseDetalle(null); setUsuariosClase([]) }} style={{ background: 'transparent', border: '1px solid #374151', borderRadius: '8px', padding: '6px 12px', color: '#9ca3af', cursor: 'pointer', fontSize: '16px' }}>✕</button>
                   </div>
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
                     <div style={{ background: '#111111', borderRadius: '12px', padding: '16px', textAlign: 'center', border: '1px solid #374151' }}>
                       <p style={{ margin: '0 0 4px', color: '#9ca3af', fontSize: '11px', textTransform: 'uppercase', fontFamily: 'var(--font-titulos)' }}>Inscritos</p>
@@ -362,7 +538,6 @@ export default function Admin() {
                       </p>
                     </div>
                   </div>
-
                   <div style={{ marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ color: '#9ca3af', fontSize: '12px' }}>Ocupación</span>
@@ -372,7 +547,6 @@ export default function Admin() {
                       <div style={{ height: '6px', borderRadius: '4px', width: `${Math.min(100, (usuariosClase.length / claseDetalle.capacidad_max) * 100)}%`, background: usuariosClase.length >= claseDetalle.capacidad_max ? '#f87171' : '#CCFF00', transition: 'width 0.3s' }} />
                     </div>
                   </div>
-
                   <h4 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '13px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px' }}>Usuarios inscritos</h4>
                   {cargandoUsuarios && <p style={{ color: '#9ca3af', fontSize: '14px' }}>Cargando...</p>}
                   {!cargandoUsuarios && usuariosClase.length === 0 && (
@@ -455,8 +629,10 @@ export default function Admin() {
         {/* SCANNER QR */}
         {seccion === 'scanner' && (
           <div style={{ background: '#1a1a1a', borderRadius: '16px', border: '1px solid #374151', padding: '30px' }}>
-            <h3 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '16px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>📷 Escanear QR de asistencia</h3>
-            <p style={{ color: '#9ca3af', fontSize: '13px', marginBottom: '24px' }}>Apunta la cámara al QR del usuario para registrar su asistencia</p>
+            <h3 style={{ fontFamily: 'var(--font-titulos)', fontWeight: 900, fontSize: '16px', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>📷 Escanear QR</h3>
+            <p style={{ color: '#9ca3af', fontSize: '13px', marginBottom: '24px' }}>
+              Escanea el QR de un usuario para registrar asistencia, o el QR de un entrenador para registrar entrada/salida. El sistema detecta automáticamente el tipo.
+            </p>
 
             <div id="qr-reader" style={{ width: '100%', maxWidth: '400px', margin: '0 auto 24px', borderRadius: '12px', overflow: 'hidden', border: escaneando ? '2px solid #CCFF00' : '2px solid #374151' }} />
 
